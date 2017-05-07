@@ -256,7 +256,7 @@ SuperMenu::SuperMenu(Blogger* bloger_, QWidget* parent, SysTrayIcon* sti)
 	//	pasteAction->setShortcut(QKeySequence::fromString("Ctrl+V"));//?, make system shortcut does not work
 	//	findAction->setShortcut(QKeySequence::fromString("Ctrl+F"));
 	findAgainAction->setShortcut(QKeySequence::fromString("Ctrl+G"));
-	boldAction->setShortcut(QKeySequence::fromString("Ctrl+B"));
+//	boldAction->setShortcut(QKeySequence::fromString("Ctrl+B"));
 	italicAction->setShortcut(QKeySequence::fromString("Ctrl+I"));
 	imageAction->setShortcut(QKeySequence::fromString("Ctrl+J"));
 	linkAction->setShortcut(QKeySequence::fromString("Ctrl+L"));
@@ -337,7 +337,7 @@ void SuperMenu::setEditActionsEnabled(bool state)
 
 void SuperMenu::newEntry()
 {
-	Blogger* c = sd::make_intrusive<Blogger>();
+	blogger_ref c(new Blogger());
 	c->setSTI(_sti);
 	c->setWindowTitle(QObject::tr((program_title_string + " - new entry [*]").c_str()));
 	if (_blogger)
@@ -369,7 +369,7 @@ void SuperMenu::choose(QString fname)
 	else
 		fn = fname;
 	if (!fn.isEmpty()) {
-		Blogger* e = sd::make_intrusive<Blogger>();
+		blogger_ref e(new Blogger());
 		if (!e->load(fn, true)) {
 			QMessageBox::warning(0, program_title_qstring, tr("Could not load the file you specified."), QMessageBox::Cancel, QMessageBox::NoButton);
 			e->deleteLater();
