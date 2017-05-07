@@ -43,12 +43,6 @@
 #include <wobjectimpl.h>
 #endif
 
-#include "urllineedit.h"
-
-#include "libraries/qt_single_application5/qtsingleapplication.h"
-
-#include "searchlineedit.h"
-#include "webview.h"
 
 #include <QtCore/QEvent>
 #include <QtCore/QMimeData>
@@ -62,288 +56,362 @@
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QStyle>
-#include <QtWidgets/QStyleOptionFrame>  // #include <QtWidgets/QStyleOptionFrameV2>
+#include <QtWidgets/QStyleOptionFrame> // #include <QtWidgets/QStyleOptionFrameV2>
 
 #include <QCompleter>
 #include <QLineEdit>
 #include <QtCore/QDebug>
 
+#include "libraries/qt_single_application5/qtsingleapplication.h"
+#include "searchlineedit.h"
+#include "urllineedit.h"
+#include "views/browser/chasewidget.h"
+#include "views/find_in_base_screen/find_screen.h"
+#include "webview.h"
+
 namespace web {
+
 #if QT_VERSION == 0x050600
-W_OBJECT_IMPL(ExLineEdit)
+	W_OBJECT_IMPL(ExLineEdit)
 #endif
 
-ExLineEdit::ExLineEdit(QWidget *parent)
-    : QWidget(parent)
-    , _leftwidget(nullptr)
-    , _lineedit(new QLineEdit(this))
-    , _clearbutton(new ClearButton(this)) {
-	setFocusPolicy(_lineedit->focusPolicy());
-	setAttribute(Qt::WA_InputMethodEnabled);
-	setSizePolicy(_lineedit->sizePolicy());
-	setBackgroundRole(_lineedit->backgroundRole());
-	setMouseTracking(true);
-	setAcceptDrops(true);
-	setAttribute(Qt::WA_MacShowFocusRect, true);
-	QPalette p = _lineedit->palette();
-	setPalette(p);
+	ExLineEdit::ExLineEdit(QWidget* view)
+	    : QWidget(view)
+#ifdef USE_CLEAR_BUTTON
+	    , _clearbutton(new ClearButton(this))
+	    , _left_widget(_clearbutton) //
+#else
 
-	// line edit
-	_lineedit->setFrame(false);
-	_lineedit->setFocusProxy(this);
-	_lineedit->setAttribute(Qt::WA_MacShowFocusRect, false);
-	QPalette clearPalette = _lineedit->palette();
-	clearPalette.setBrush(QPalette::Base, QBrush(Qt::transparent));
-	_lineedit->setPalette(clearPalette);
+	    , _chasewidget(new ChaseWidget(QSize(16, 16), this)) //
+	    , _left_widget(_chasewidget)
+#endif // USE_CLEAR_BUTTON
+	    , _right_widget(nullptr)
+	    , _lineedit(new QLineEdit(this))
+	    , _web_view(dynamic_cast<web::WebView*>(view))
+	{
+#ifndef USE_CLEAR_BUTTON
+		_chasewidget->setMaximumWidth(17);
+#endif
+		setFocusPolicy(_lineedit->focusPolicy());
+		setAttribute(Qt::WA_InputMethodEnabled);
+		setSizePolicy(_lineedit->sizePolicy());
+		setBackgroundRole(_lineedit->backgroundRole());
+		setMouseTracking(true);
+		setAcceptDrops(true);
+		setAttribute(Qt::WA_MacShowFocusRect, true);
+		QPalette p = _lineedit->palette();
+		setPalette(p);
 
-	// clearButton
-	// _clearbutton = new ClearButton(this);
-	connect(_clearbutton, &ClearButton::clicked, _lineedit, &QLineEdit::clear);
-	connect(_lineedit, &QLineEdit::textChanged, _clearbutton, &ClearButton::textChanged);
-}
+		// line edit
+		_lineedit->setFrame(false);
+		_lineedit->setFocusProxy(this);
+		_lineedit->setAttribute(Qt::WA_MacShowFocusRect, false);
+		QPalette clearPalette = _lineedit->palette();
+		clearPalette.setBrush(QPalette::Base, QBrush(Qt::transparent));
+		_lineedit->setPalette(clearPalette);
 
-QLineEdit *ExLineEdit::lineEdit() const {
-    return _lineedit;
-}
+// clearButton
+// _clearbutton = new ClearButton(this);
+#ifdef USE_CLEAR_BUTTON
+		connect(_lineedit, &QLineEdit::textChanged, _clearbutton, &ClearButton::textChanged);
+//		_right_widget = _clearbutton;
+#endif // USE_CLEAR_BUTTON
+	}
 
-void ExLineEdit::setLeftWidget(QWidget *widget) {
-    _leftwidget = widget;
-}
+	QLineEdit* ExLineEdit::lineEdit() const
+	{
+		return _lineedit;
+	}
 
-QWidget *ExLineEdit::leftWidget() const {
-	return _leftwidget;
-}
+	void ExLineEdit::left_widget(QWidget* widget)
+	{
+		_left_widget = widget;
+	}
 
-void ExLineEdit::resizeEvent(QResizeEvent *event) {
-	Q_ASSERT(_leftwidget);
-	updateGeometries();
-	QWidget::resizeEvent(event);
-}
+	QWidget* ExLineEdit::left_widget() const
+	{
+		return _left_widget;
+	}
+	void ExLineEdit::right_widget(QWidget* widget)
+	{
+		_right_widget = widget;
+	}
 
-void ExLineEdit::updateGeometries() {
-	QStyleOptionFrame panel;  // QStyleOptionFrameV2
-	initStyleOption(&panel);
-	QRect rect =
-	    style()->subElementRect(QStyle::SE_LineEditContents, &panel, this);
+	QWidget* ExLineEdit::right_widget() const
+	{
+		return _right_widget;
+	}
+	void ExLineEdit::resizeEvent(QResizeEvent* event)
+	{
+		Q_ASSERT(_left_widget);
+		assert(_right_widget);
+		updateGeometries();
+		QWidget::resizeEvent(event);
+	}
 
-	int height = rect.height();
-	int width = rect.width();
+	void ExLineEdit::updateGeometries()
+	{
+		QStyleOptionFrame panel; // QStyleOptionFrameV2
+		initStyleOption(&panel);
+		QRect rect =
+		    style()->subElementRect(QStyle::SE_LineEditContents, &panel, this);
 
-	int leftwidgetheight_ = _leftwidget->height();
-	_leftwidget->setGeometry(rect.x() + 2, rect.y() + (height - leftwidgetheight_) / 2, _leftwidget->width(), _leftwidget->height());
+		int height = rect.height(); //20
+		int width = rect.width();
 
-	int clearButtonWidth = this->height();
-	_lineedit->setGeometry(_leftwidget->x() + _leftwidget->width(), 0, width - clearButtonWidth - _leftwidget->width(), this->height());
+		int leftwidgetheight_ = _left_widget->height(); //15
+		_left_widget->setGeometry(rect.x() + 2, rect.y() + (height - leftwidgetheight_) / 2, _left_widget->width(), _left_widget->height());
 
-	_clearbutton->setGeometry(this->width() - clearButtonWidth, 0, clearButtonWidth, this->height());
-}
+		int right_widget_width = this->height(); //22
+		_lineedit->setGeometry(_left_widget->x() + _left_widget->width() + 2, 0, width - right_widget_width - _left_widget->width() - 2, this->height());
+		auto this_width = this->width();
+		//		_clearbutton
+		_right_widget->setGeometry(this_width - right_widget_width, 0, right_widget_width, this->height());
+	}
 
-void ExLineEdit::initStyleOption(
-    QStyleOptionFrame *option) const  // QStyleOptionFrameV2
-{
-	option->initFrom(this);
-	option->rect = contentsRect();
-	option->lineWidth =
-	    style()->pixelMetric(QStyle::PM_DefaultFrameWidth, option, this);
-	option->midLineWidth = 0;
-	option->state |= QStyle::State_Sunken;
-	if (_lineedit->isReadOnly())
-		option->state |= QStyle::State_ReadOnly;
+	void ExLineEdit::initStyleOption(
+	    QStyleOptionFrame* option) const // QStyleOptionFrameV2
+	{
+		option->initFrom(this);
+		option->rect = contentsRect();
+		option->lineWidth =
+		    style()->pixelMetric(QStyle::PM_DefaultFrameWidth, option, this);
+		option->midLineWidth = 0;
+		option->state |= QStyle::State_Sunken;
+		if (_lineedit->isReadOnly())
+			option->state |= QStyle::State_ReadOnly;
 #ifdef QT_KEYPAD_NAVIGATION
-	if (hasEditFocus())
-		option->state |= QStyle::State_HasEditFocus;
+		if (hasEditFocus())
+			option->state |= QStyle::State_HasEditFocus;
 #endif
-	option->features = QStyleOptionFrame::None;  // QStyleOptionFrameV2
-}
+		option->features = QStyleOptionFrame::None; // QStyleOptionFrameV2
+	}
 
-QSize ExLineEdit::sizeHint() const {
-	_lineedit->setFrame(true);
-	QSize size = _lineedit->sizeHint();
-	_lineedit->setFrame(false);
+	QSize ExLineEdit::sizeHint() const
+	{
+		_lineedit->setFrame(true);
+		QSize size = _lineedit->sizeHint();
+		_lineedit->setFrame(false);
 
-	return size;
-}
+		return size;
+	}
 
-void ExLineEdit::focusInEvent(QFocusEvent *event) {
-	_lineedit->event(event);
-	QWidget::focusInEvent(event);
-}
+	void ExLineEdit::focusInEvent(QFocusEvent* event)
+	{
+		_lineedit->event(event);
+		QWidget::focusInEvent(event);
+	}
 
-void ExLineEdit::focusOutEvent(QFocusEvent *event) {
-	_lineedit->event(event);
+	void ExLineEdit::focusOutEvent(QFocusEvent* event)
+	{
+		_lineedit->event(event);
 
-	void (QCompleter::*_activated)(const QString &text) = &QCompleter::activated;
-	if (_lineedit->completer()) {
-		connect(_lineedit->completer(), _activated, _lineedit, &QLineEdit::setText);
+		void (QCompleter::*_activated)(const QString& text) = &QCompleter::activated;
+		if (_lineedit->completer()) {
+			connect(_lineedit->completer(), _activated, _lineedit, &QLineEdit::setText);
 #ifndef QT_NO_COMPLETER
 // connect(_lineedit->completer(), &QCompleter::highlighted, _lineedit,
 // &QLineEdit::_q_completionHighlighted);
 #endif
+		}
+		QWidget::focusOutEvent(event);
 	}
-	QWidget::focusOutEvent(event);
-}
 
-void ExLineEdit::keyPressEvent(QKeyEvent *event) {
-	_lineedit->event(event);
-}
+	void ExLineEdit::keyPressEvent(QKeyEvent* event)
+	{
+		_lineedit->event(event);
+	}
 
-bool ExLineEdit::event(QEvent *event) {
-	bool result = false;
-	if (event->type() == QEvent::ShortcutOverride)
-		result = _lineedit->event(event);  // return _lineedit->event(event);
-	else
-		result = QWidget::event(event);
-	return result;  // QWidget::event(event);
-}
+	bool ExLineEdit::event(QEvent* event)
+	{
+		bool result = false;
+		if (event->type() == QEvent::ShortcutOverride)
+			result = _lineedit->event(event); // return _lineedit->event(event);
+		else
+			result = QWidget::event(event);
+		return result; // QWidget::event(event);
+	}
 
-void ExLineEdit::paintEvent(QPaintEvent *) {
-	QPainter p(this);
-	QStyleOptionFrame panel;  // QStyleOptionFrameV2
-	initStyleOption(&panel);
-	style()->drawPrimitive(QStyle::PE_PanelLineEdit, &panel, &p, this);
-}
+	void ExLineEdit::paintEvent(QPaintEvent*)
+	{
+		QPainter p(this);
+		QStyleOptionFrame panel; // QStyleOptionFrameV2
+		initStyleOption(&panel);
+		style()->drawPrimitive(QStyle::PE_PanelLineEdit, &panel, &p, this);
+	}
 
-QVariant ExLineEdit::inputMethodQuery(Qt::InputMethodQuery property) const {
-	return _lineedit->inputMethodQuery(property);
-}
+	QVariant ExLineEdit::inputMethodQuery(Qt::InputMethodQuery property) const
+	{
+		return _lineedit->inputMethodQuery(property);
+	}
 
-void ExLineEdit::inputMethodEvent(QInputMethodEvent *e) {
-	_lineedit->event(e);
-}
+	void ExLineEdit::inputMethodEvent(QInputMethodEvent* e)
+	{
+		_lineedit->event(e);
+	}
+#ifndef USE_CLEAR_BUTTON
+	ChaseWidget* ExLineEdit::chasewidget() const
+	{
+		return _chasewidget;
+	}
+#endif // USE_CLEAR_BUTTON
+	UrlIconLabel::UrlIconLabel(QWidget* parent)
+	    : QLabel(parent)
+	    , _browserview(0)
+	{
+		setMinimumWidth(16);
+		setMinimumHeight(16);
+	}
 
-class UrlIconLabel : public QLabel {
-	public:
-	UrlIconLabel(QWidget *parent);
+	void UrlIconLabel::mousePressEvent(QMouseEvent* event)
+	{
+		if (event->button() == Qt::LeftButton)
+			_dragstartpos = event->pos();
+		QLabel::mousePressEvent(event);
+	}
 
-	WebView *_browserview;
+	void UrlIconLabel::mouseMoveEvent(QMouseEvent* event)
+	{
+		if (event->buttons() == Qt::LeftButton &&
+		    (event->pos() - _dragstartpos).manhattanLength() >
+			QApplication::startDragDistance() &&
+		    _browserview) {
+			if (_browserview->page()) {
+				QDrag* drag = new QDrag(this);
+				QMimeData* mimeData = new QMimeData;
 
-	protected:
-	void mousePressEvent(QMouseEvent *event);
-	void mouseMoveEvent(QMouseEvent *event);
+				mimeData->setText(
+				    QString::fromUtf8(_browserview->page()->url().toEncoded()));
+				QList<QUrl> urls;
+				urls.append(_browserview->page()->url());
+				mimeData->setUrls(urls);
 
-	private:
-	QPoint _dragstartpos;
-};
-
-UrlIconLabel::UrlIconLabel(QWidget *parent)
-    : QLabel(parent)
-    , _browserview(0) {
-	setMinimumWidth(16);
-	setMinimumHeight(16);
-}
-
-void UrlIconLabel::mousePressEvent(QMouseEvent *event) {
-	if (event->button() == Qt::LeftButton)
-		_dragstartpos = event->pos();
-	QLabel::mousePressEvent(event);
-}
-
-void UrlIconLabel::mouseMoveEvent(QMouseEvent *event) {
-	if (event->buttons() == Qt::LeftButton &&
-	    (event->pos() - _dragstartpos).manhattanLength() >
-	        QApplication::startDragDistance() &&
-	    _browserview) {
-		if (_browserview->page()) {
-			QDrag *drag = new QDrag(this);
-			QMimeData *mimeData = new QMimeData;
-
-			mimeData->setText(
-			    QString::fromUtf8(_browserview->page()->url().toEncoded()));
-			QList<QUrl> urls;
-			urls.append(_browserview->page()->url());
-			mimeData->setUrls(urls);
-
-			drag->setMimeData(mimeData);
-			drag->exec();
+				drag->setMimeData(mimeData);
+				drag->exec();
+			}
 		}
 	}
-}
 
 #if QT_VERSION == 0x050600
-W_OBJECT_IMPL(UrlLineEdit)
+	W_OBJECT_IMPL(UrlLineEdit)
 #endif
 
-UrlLineEdit::UrlLineEdit(WebView *view, QWidget *parent)
-    : ExLineEdit(parent)
-    , _webview(view)
-    , _iconlabel(new UrlIconLabel(this)) {
-	// icon
-	// _iconlabel = new UrlIconLabel(this);
-	_iconlabel->resize(16, 16);
-	setLeftWidget(_iconlabel);
-	_defaultbasecolor = palette().color(QPalette::Base);
-	setWebView(view);
-}
+	UrlLineEdit::UrlLineEdit(QWidget* view)
+	    : ExLineEdit(view)
+	    //	    , _find_screen(gl_paras->find_screen()) //dynamic_cast<FindScreen*>(find_screen_)
+	    //	    , _web_view(view)
+	    , _iconlabel(new UrlIconLabel(this))
+	{
+// icon
+// _iconlabel = new UrlIconLabel(this);
+#ifdef USE_URL_ICON
+		_iconlabel->resize(16, 16);
+		left_widget(_iconlabel); // replaced with searchbutton
+#else
 
-void UrlLineEdit::setWebView(WebView *webView) {
-	// Q_ASSERT(!_webview);
-	_webview = webView;
-	_iconlabel->_browserview = webView;
-	connect(webView, &WebView::urlChanged, this, &UrlLineEdit::webViewUrlChanged);
-	connect(webView, &WebView::iconChanged, this, &UrlLineEdit::webViewIconChanged);
-	connect(webView, &WebView::loadProgress, this, [&](int i) {
-		Q_UNUSED(i);
-		update();
-	});
-}
 
-void UrlLineEdit::webViewUrlChanged(const QUrl &url) {
-	_lineedit->setText(QString::fromUtf8(url.toEncoded()));
-	_lineedit->setCursorPosition(0);
-}
+		if (_web_view) {
+#ifdef USE_CLEAR_BUTTON
+			_clearbutton->resize(16, 16 //_clearbutton->height(), _clearbutton->height()
+			    );
 
-void UrlLineEdit::webViewIconChanged() {
-	Q_ASSERT(_webview);
-	QPixmap pixmap = _webview->icon().pixmap(16, 16);
-	_iconlabel->setPixmap(pixmap);
-}
-
-QLinearGradient UrlLineEdit::generateGradient(const QColor &color) const {
-	QLinearGradient gradient(0, 0, 0, height());
-	gradient.setColorAt(0, _defaultbasecolor);
-	gradient.setColorAt(0.15, color.lighter(120));
-	gradient.setColorAt(0.5, color);
-	gradient.setColorAt(0.85, color.lighter(120));
-	gradient.setColorAt(1, _defaultbasecolor);
-
-	return gradient;
-}
-
-void UrlLineEdit::focusOutEvent(QFocusEvent *event) {
-	// if(_lineedit->text().isEmpty() && _webview){
-	// if(_webview->load_finished())
-	// if(_webview->page())_lineedit->setText(QString::fromUtf8(_webview->page()->url().toEncoded()));
-	// // _webview maybe not accessible, page() may be invalid
-	// }
-	ExLineEdit::focusOutEvent(event);
-}
-
-void UrlLineEdit::paintEvent(QPaintEvent *event) {
-	QPalette p = palette();
-	if (_webview) {
-		if (_webview->page() &&
-		    _webview->page()->url().scheme() == QLatin1String("https")) {
-			QColor lightYellow(248, 248, 210);
-			p.setBrush(QPalette::Base, generateGradient(lightYellow));
+			connect(_web_view, &web::WebView::loadFinished, [&](bool) { _clearbutton->setIcon(_web_view->icon()); });
+#else
+			connect(_web_view, &web::WebView::loadFinished, [&](bool) { _chasewidget->setIcon(_web_view->icon()); });
+#endif //USE_CLEAR_BUTTON
 		}
-	} else
-		p.setBrush(QPalette::Base, _defaultbasecolor);
-	setPalette(p);
-	ExLineEdit::paintEvent(event);
 
-	QPainter painter(this);
-	QStyleOptionFrame panel;  // QStyleOptionFrameV2
-	initStyleOption(&panel);
-	QRect backgroundRect =
-	    style()->subElementRect(QStyle::SE_LineEditContents, &panel, this);
-	if (_webview && !hasFocus()) {
-		int progress = _webview->progress();
-		QColor loadingColor = QColor(116, 192, 250);
-		painter.setBrush(generateGradient(loadingColor));
-		painter.setPen(Qt::transparent);
-		int mid = backgroundRect.width() / 100 * progress;
-		QRect progressRect(backgroundRect.x(), backgroundRect.y(), mid, backgroundRect.height());
-		painter.drawRect(progressRect);
+
+#endif //USE_URL_ICON
+		_defaultbasecolor = palette().color(QPalette::Base);
+		setWebView(dynamic_cast<web::WebView*>(view));
 	}
-}
+
+	void UrlLineEdit::setWebView(WebView* webView)
+	{
+		// Q_ASSERT(!_web_view);
+		_web_view = webView;
+		_iconlabel->_browserview = _web_view;
+		connect(_web_view, &WebView::urlChanged, this, &UrlLineEdit::webViewUrlChanged);
+		connect(_web_view, &WebView::iconChanged, this, &UrlLineEdit::webViewIconChanged);
+		connect(_web_view, &WebView::loadProgress, this, [&](int i) {
+			Q_UNUSED(i);
+			update();
+		});
+	}
+
+	void UrlLineEdit::webViewUrlChanged(const QUrl& url)
+	{
+		_lineedit->setText(QString::fromUtf8(url.toEncoded()));
+		qDebug() << "_lineedit->text()=\t" << _lineedit->text();
+		_lineedit->setCursorPosition(0);
+	}
+
+	void UrlLineEdit::webViewIconChanged()
+	{
+		Q_ASSERT(_web_view);
+#ifdef USE_URL_ICON
+		QPixmap pixmap = _web_view->icon().pixmap(16, 16);
+		_iconlabel->setPixmap(pixmap);
+#endif // USE_URL_ICON
+	}
+
+	QLinearGradient UrlLineEdit::generateGradient(const QColor& color) const
+	{
+		QLinearGradient gradient(0, 0, 0, height());
+		gradient.setColorAt(0, _defaultbasecolor);
+		gradient.setColorAt(0.15, color.lighter(120));
+		gradient.setColorAt(0.5, color);
+		gradient.setColorAt(0.85, color.lighter(120));
+		gradient.setColorAt(1, _defaultbasecolor);
+
+		return gradient;
+	}
+
+	void UrlLineEdit::focusOutEvent(QFocusEvent* event)
+	{
+		// if(_lineedit->text().isEmpty() && _web_view){
+		// if(_web_view->load_finished())
+		// if(_web_view->page())_lineedit->setText(QString::fromUtf8(_web_view->page()->url().toEncoded()));
+		// // _web_view maybe not accessible, page() may be invalid
+		// }
+		ExLineEdit::focusOutEvent(event);
+	}
+
+	void UrlLineEdit::paintEvent(QPaintEvent* event)
+	{
+		QPalette p = palette();
+		if (_web_view) {
+			if (_web_view->page() &&
+			    _web_view->page()->url().scheme() == QLatin1String("https")) {
+				QColor lightYellow(248, 248, 210);
+				p.setBrush(QPalette::Base, generateGradient(lightYellow));
+			}
+		} else
+			p.setBrush(QPalette::Base, _defaultbasecolor);
+		setPalette(p);
+		ExLineEdit::paintEvent(event);
+
+		QPainter painter(this);
+		QStyleOptionFrame panel; // QStyleOptionFrameV2
+		initStyleOption(&panel);
+		QRect backgroundRect =
+		    style()->subElementRect(QStyle::SE_LineEditContents, &panel, this);
+		if (_web_view && !hasFocus()) {
+			int progress = _web_view->progress();
+			QColor loadingColor = QColor(116, 192, 250);
+			painter.setBrush(generateGradient(loadingColor));
+			painter.setPen(Qt::transparent);
+			int mid = backgroundRect.width() / 100 * progress;
+			QRect progressRect(backgroundRect.x(), backgroundRect.y(), mid, backgroundRect.height());
+			painter.drawRect(progressRect);
+		}
+	}
+
+	WebView* UrlLineEdit::webview() { return _web_view; }
+
+	UrlIconLabel* UrlLineEdit::iconlabel() const
+	{
+		return _iconlabel;
+	}
 }
